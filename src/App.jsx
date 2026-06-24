@@ -77,7 +77,7 @@ async function saveToFirebase(key, val) {
   }
 }
 
-function compressImage(dataUrl, maxWidth = 500, quality = 0.4) {
+function compressImage(dataUrl, maxWidth = 350, quality = 0.3) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
