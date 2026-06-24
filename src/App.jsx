@@ -70,8 +70,34 @@ async function loadFromFirebase(key, def) {
 async function saveToFirebase(key, val) {
   try {
     await setDoc(doc(db, "carballeira", key), { value: val });
-  } catch (e) { console.error("Firebase save error:", e); }
+    return true;
+  } catch (e) {
+    console.error("Firebase save error:", e);
+    return false;
+  }
 }
+
+function compressImage(dataUrl, maxWidth = 500, quality = 0.4) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 
 // ── Lightbox ─────────────────────────────────────────────
 function Lightbox({ photos, startIndex, onClose }) {
@@ -204,7 +230,10 @@ function PhotoStrip({ photos, onAdd, onDel, onOpen }) {
         onChange={e => {
           Array.from(e.target.files).forEach(f => {
             const r = new FileReader();
-            r.onload = ev => onAdd(ev.target.result);
+            r.onload = async ev => {
+              const compressed = await compressImage(ev.target.result);
+              onAdd(compressed);
+            };
             r.readAsDataURL(f);
           });
           e.target.value = "";
@@ -218,6 +247,7 @@ const TABS = ["Carballos","Flora","Fauna","Visitas","Finca"];
 
 export default function App() {
   const [loading, setLoading]     = useState(true);
+  const [saveError, setSaveError] = useState(null);
   const [tab, setTab]             = useState("Carballos");
   const [trees, setTrees]         = useState(INIT_TREES);
   const [species, setSpecies]     = useState(INIT_SPECIES);
@@ -254,10 +284,10 @@ export default function App() {
   }, []);
 
   // ── Guardar en Firebase cuando cambian ──
-  useEffect(() => { if (!loading) saveToFirebase("trees", trees); },   [trees, loading]);
-  useEffect(() => { if (!loading) saveToFirebase("species", species); }, [species, loading]);
-  useEffect(() => { if (!loading) saveToFirebase("visits", visits); },   [visits, loading]);
-  useEffect(() => { if (!loading) saveToFirebase("fauna", fauna); },     [fauna, loading]);
+  useEffect(() => { if (!loading) saveToFirebase("trees", trees).then(ok => !ok && setSaveError("Non se puideron gardar os carballos. Comproba o tamaño das fotos.")); },   [trees, loading]);
+  useEffect(() => { if (!loading) saveToFirebase("species", species).then(ok => !ok && setSaveError("Non se puideron gardar as especies. Comproba o tamaño das fotos.")); }, [species, loading]);
+  useEffect(() => { if (!loading) saveToFirebase("visits", visits).then(ok => !ok && setSaveError("Non se puido gardar a visita. Comproba o tamaño das fotos.")); },   [visits, loading]);
+  useEffect(() => { if (!loading) saveToFirebase("fauna", fauna).then(ok => !ok && setSaveError("Non se puido gardar a fauna. Comproba o tamaño das fotos.")); },     [fauna, loading]);
 
   const avgHealth = Math.round(trees.reduce((s,t)=>s+t.health,0)/trees.length);
   const zoneAvg = z => { const t=trees.filter(x=>x.zone===z); return t.length?Math.round(t.reduce((s,x)=>s+x.health,0)/t.length):0; };
@@ -296,6 +326,17 @@ export default function App() {
     }}>
 
       {lightbox && <Lightbox photos={lightbox.photos} startIndex={lightbox.index} onClose={() => setLightbox(null)} />}
+      {saveError && (
+        <div style={{
+          position:"fixed", top:12, left:"50%", transform:"translateX(-50%)",
+          zIndex:2000, background:C.rust, color:"#fff", padding:"10px 18px",
+          borderRadius:8, fontSize:12, fontFamily:"'Lora',serif", maxWidth:"90vw",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.4)", display:"flex", alignItems:"center", gap:10,
+        }}>
+          <span>⚠️ {saveError}</span>
+          <button onClick={()=>setSaveError(null)} style={{ background:"transparent", border:"none", color:"#fff", fontSize:16, cursor:"pointer", padding:0 }}>×</button>
+        </div>
+      )}
 
       <div style={{ padding:"24px 18px 16px", borderBottom:`1px solid ${C.bark}` }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
